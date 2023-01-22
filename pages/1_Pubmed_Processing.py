@@ -16,6 +16,7 @@ import matplotlib.pyplot as plt
 import matplotlib.colors as mcolors
 import matplotlib
 import seaborn as sns
+from bertopic import BERTopic
 from connector.PubMedConnector import PubMedConnector
 
 
@@ -45,8 +46,8 @@ def processing_data(impact_factor):
                         "synonymous","skipping","father","mother","pedigree","novo","rescues","rescued","restored",
                         "exhibits","induce", "Background","Objective","Methods","cells", "kinase","activation","protein"]
 
-        abstract_data = retrieve_abstract_data(url, stopword_list)
-        lda_topic_modelling(abstract_data, 6, stopword_list)
+        abstract_data, tab3 = retrieve_abstract_data(url, stopword_list)
+        bert_topic_modelling(abstract_data,tab3)
 
 def retrieve_abstract_data(url, stopword_list):
     """_summary_
@@ -90,9 +91,9 @@ def process_abstract_data(result, stopword_list):
             
 
     #preprocessing of the abstracts that are searched for, remove punctuations, stopwords
-    end_list = preprocessing_list(result["abstract"], stopword_list)
-    bigram = Phrases(end_list,min_count = 5, threshold = 100)
-    document = [TaggedDocument(doc, [i]) for i, doc in zip(result["ID"].tolist(),bigram[end_list])]
+    result["processed_abstracts"] = preprocessing_list(result["abstract"], stopword_list)
+    bigram = Phrases(result["processed_abstracts"].tolist(),min_count = 5, threshold = 100)
+    document = [TaggedDocument(doc, [i]) for i, doc in zip(result["ID"].tolist(),bigram[result["processed_abstracts"].tolist()])]
     with st.spinner("Word Vector Model is running..."):
         model = running_model(document)
         st.success("Model done")
@@ -106,7 +107,7 @@ def process_abstract_data(result, stopword_list):
 
     result["labels"] = df_umap["labels"]
 
-    return result
+    return result, tab3
             
 def preprocessing_list(liste,stopword_list):
     """ preprocess the abstract list, remove stopwords, punctuations, numbers
@@ -243,34 +244,21 @@ def top_10_last_authors(abstract_df,tab):
     tab.plotly_chart(last_plot, plot = True)
 
 @st.cache()
-def lda_topic_modelling(df_end, cluster_number,stopword_list):
-    """_summary_
+def bert_topic_modelling(df_end, tab):
+    """_summary_: Calculates topics analysis using BertTopics
 
     Args:
-        df_end (_type_): _description_
-        cluster_number (_type_): _description_
-        stopword_list (_type_): _description_
+        df_end (pd.DataFrame): DataFrame holding the processed abstracts
+        tab (st.Tabs): Tab where to draw the Analysis
     """
-    model_list = []
-    df_end["abstract"] = preprocessing_list(df_end["abstract"].tolist(),stopword_list)
-
-    for i in df_end["labels"].unique():
-        df_labels = df_end[df_end["labels"]== i]
-        id2word = corpora.Dictionary(df_labels["abstract"].values)
-        corpus = [id2word.doc2bow(text) for text in df_labels["abstract"].values]
-        tfidf = models.TfidfModel(corpus)
-        corpus = tfidf[corpus]
-        ldamodel = models.ldamodel.LdaModel(corpus=corpus,
-                                                id2word=id2word,
-                                                num_topics=1,
-                                                alpha='auto',
-                                                eta='auto',
-                                                iterations=800,
-                                                passes = 20,
-                                                eval_every=1)
-
-        model_list.append(ldamodel)
-    write_table_model(model_list)
+    print(df_end.head())
+    df_end["string_abstract"] = [" ".join(i) for i in df_end["processed_abstracts"]]
+    targets = df_end["labels"].tolist()
+    topic_model = BERTopic()
+    topics, probs = topic_model.fit_transform(df_end["string_abstract"].tolist())
+    topics_per_class = topic_model.topics_per_class(df_end["string_abstract"].tolist(), classes=targets)
+    tab.plotly_chart(topic_model.visualize_topics_per_class(topics_per_class, top_n_topics=10))
+   
     
 def write_table_model(model_list):
     """

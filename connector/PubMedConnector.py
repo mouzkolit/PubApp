@@ -20,18 +20,7 @@ class PubMedConnector:
         """_summary_: Should query the distinct url string in Pubmed
         """
         try:
-            Entrez.mail = self.email
-            esearch_query = Entrez.esearch(db="pubmed", term=self.url,retmax = 200000)
-            esearch_result = Entrez.read(esearch_query)
-            count = esearch_result['Count']
-            esearch_query1 = Entrez.esearch(db="pubmed", term=self.url, retmax = count, retmode = "xlm")
-            esearch_result1 = Entrez.read(esearch_query1)
-            idlist = esearch_result1["IdList"]
-            handle = Entrez.efetch(db="pubmed", id=idlist, rettype="medline", retmode="text", retmax = count)
-            records = Medline.parse(handle)
-            final_dataframe = self.retrieve_data_from_record(records)
-            return final_dataframe
-
+            return self.query_pubmed()
         except HTTPError:
             count += 1
             time.sleep(10)
@@ -40,6 +29,19 @@ class PubMedConnector:
             else:
                 st.error("No connection to the server could be established")
                 raise ConnectionError
+
+    # TODO Rename this here and in `query_data`
+    def query_pubmed(self):
+        Entrez.mail = self.email
+        esearch_query = Entrez.esearch(db="pubmed", term=self.url,retmax = 200000)
+        esearch_result = Entrez.read(esearch_query)
+        count = esearch_result['Count']
+        esearch_query1 = Entrez.esearch(db="pubmed", term=self.url, retmax = count, retmode = "xlm")
+        esearch_result1 = Entrez.read(esearch_query1)
+        idlist = esearch_result1["IdList"]
+        handle = Entrez.efetch(db="pubmed", id=idlist, rettype="medline", retmode="text", retmax = count)
+        records = Medline.parse(handle)
+        return self.retrieve_data_from_record(records)
             
     def retrieve_data_from_record(self,records):
         """
@@ -95,6 +97,12 @@ class PubMedConnector:
 
     # TODO Rename this here and in `retrieve_records`
     def create_dictionary_from_record(self, corpus_dictionary, record):
+        """_summary_
+
+        Args:
+            corpus_dictionary (_type_): _description_
+            record (_type_): _description_
+        """
         corpus_dictionary["ID"].append(record["PMID"])
         corpus_dictionary["abstract"].append(record["AB"])
         corpus_dictionary["Title"].append(record["TI"])
