@@ -50,14 +50,14 @@ def processing_data(impact_factor):
         bert_topic_modelling(abstract_data,tab3)
 
 def retrieve_abstract_data(url, stopword_list):
-    """_summary_
+    """_summary
 
     Args:
-        url (_type_): _description_
-        stopword_list (_type_): _description_
+        url (str): Search Term in Pubmed
+        stopword_list (list): Additional Stopwords fitting to PubMed Abstracts
 
     Returns:
-        _type_: _description_
+        pd.DataFrame: Returns DataFrame holding abstracts, title and more per chunk
     """
     st.header("PubMed Abstract Processing:")
     pubmed_fetch = PubMedConnector(url)
@@ -66,7 +66,7 @@ def retrieve_abstract_data(url, stopword_list):
     
     
 def process_abstract_data(result, stopword_list):
-    """_summary_
+    """_summary_: 
 
     Args:
         result (_type_): _description_
@@ -241,9 +241,9 @@ def top_10_last_authors(abstract_df,tab):
                        x=grouped_occurences.index, 
                        y=grouped_occurences.values, 
                        title = "Top 10 last authors")
-    tab.plotly_chart(last_plot, plot = True)
+    tab.plotly_chart(last_plot, use_container_width = True)
 
-@st.cache()
+
 def bert_topic_modelling(df_end, tab):
     """_summary_: Calculates topics analysis using BertTopics
 
@@ -254,10 +254,13 @@ def bert_topic_modelling(df_end, tab):
     print(df_end.head())
     df_end["string_abstract"] = [" ".join(i) for i in df_end["processed_abstracts"]]
     targets = df_end["labels"].tolist()
-    topic_model = BERTopic()
+    topic_model = BERTopic(nr_topics="auto")
     topics, probs = topic_model.fit_transform(df_end["string_abstract"].tolist())
     topics_per_class = topic_model.topics_per_class(df_end["string_abstract"].tolist(), classes=targets)
-    tab.plotly_chart(topic_model.visualize_topics_per_class(topics_per_class, top_n_topics=10))
+    
+    col1, col2 = tab.columns(2)
+    col1.plotly_chart(topic_model.visualize_topics())
+    col2.plotly_chart(topic_model.visualize_topics_per_class(topics_per_class))
    
     
 def write_table_model(model_list):
