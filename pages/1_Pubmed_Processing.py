@@ -18,7 +18,7 @@ import matplotlib
 import seaborn as sns
 from bertopic import BERTopic
 from connector.PubMedConnector import PubMedConnector
-
+from connector.DataBaseConnector import DatabaseConnector
 
 @st.cache
 def load_data():
@@ -26,8 +26,12 @@ def load_data():
     current_path = os.getcwd()
     return pd.read_csv(current_path + "/data/impact_factor.txt", delimiter = "\t")
 
+def load_database():
+    print("hello")
+    database = DatabaseConnector("pubmed.db")
+    return database
 # make a list of stopwords
-def processing_data(impact_factor):
+def processing_data(impact_factor, database):
     """_summary_:  Get the impact factor list 
 
     Args:
@@ -36,7 +40,8 @@ def processing_data(impact_factor):
     # layout of the streamlit page that is necessary for the training
     st.sidebar.subheader("Choose your search term")
     if url := st.sidebar.text_input('Enter your search query here:'):
-        
+        database._con.close()
+        database.write_mapping_table(url)
         stopword_list = ["among","although","especially","kg","km","mainly","ml","mm",
                         "disease","significantly","obtained","mutation","significant",
                         "quite","result","results","estimated","interesting","conducted",
@@ -181,15 +186,15 @@ def draw_umap(umap_df):
     returns:
     umap_figure: figure of the umap visualization
     """
-    fig3 = px.scatter(umap_df, 
-                      x="UMAP-1", 
-                      y="UMAP-2", 
-                      color="labels", 
-                      hover_data=["Title", "Journal"],
-                      template="plotly_white", 
-                      title = "UMAP visualization of queried term")
-
-    return fig3
+    return px.scatter(
+        umap_df,
+        x="UMAP-1",
+        y="UMAP-2",
+        color="labels",
+        hover_data=["Title", "Journal"],
+        template="plotly_white",
+        title="UMAP visualization of queried term",
+    )
 
 def count_occurences_per_year(abstract_df,tab):
     """ retrieves the number of occurences per year
@@ -259,8 +264,8 @@ def bert_topic_modelling(df_end, tab):
     topics_per_class = topic_model.topics_per_class(df_end["string_abstract"].tolist(), classes=targets)
     
     col1, col2 = tab.columns(2)
-    col1.plotly_chart(topic_model.visualize_topics())
-    col2.plotly_chart(topic_model.visualize_topics_per_class(topics_per_class))
+    col1.plotly_chart(topic_model.visualize_topics(), use_container_width = True)
+    col2.plotly_chart(topic_model.visualize_topics_per_class(topics_per_class), use_container_width = True)
    
     
 def write_table_model(model_list):
@@ -275,4 +280,5 @@ def write_table_model(model_list):
     
 if __name__ == "__main__":
     impact_factor = load_data()
-    processing_data(impact_factor)
+    database = load_database()
+    processing_data(impact_factor, database)

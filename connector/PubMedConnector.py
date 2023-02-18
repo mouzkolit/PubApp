@@ -10,7 +10,7 @@ import streamlit as st
 
 class PubMedConnector:
     def __init__(self,url):
-        
+        # This is the connector retrieving the Pubmed Abstracts from the PUBMED database
         self.email = "maximilian.zeidler@i-med.ac.at"
         self.url = url
         self.count = 0
@@ -32,6 +32,11 @@ class PubMedConnector:
 
     # TODO Rename this here and in `query_data`
     def query_pubmed(self):
+        """_summary_ MultiProcessing Pubmed query
+
+        Returns:
+            dict: Dictinary holding all the queried parameter from PUBMED
+        """
         Entrez.mail = self.email
         esearch_query = Entrez.esearch(db="pubmed", term=self.url,retmax = 200000)
         esearch_result = Entrez.read(esearch_query)
@@ -57,7 +62,6 @@ class PubMedConnector:
         records_dataframe_list = self.progress_records_multiprocessing(chunked_records)
         return self.append_dataframes(records_dataframe_list)
         
-       
     def progress_records_multiprocessing(self,records_list, workers = 8):
         """Runs the Worker Thread for each chunk and returns an iterator of the list
         results of the records fetched from the PubMed Outline
@@ -73,10 +77,10 @@ class PubMedConnector:
         """_summary_
 
         Args:
-            records (_type_): _description_
+            records (dict): Holding the PubMed data from the fetch api
 
         Returns:
-            _type_: _description_
+            pd.DataFrame: Dictionary with retrieved parameters
         """
         corpus_dictionary = {"ID": [], 
                             "abstract": [],
@@ -100,8 +104,8 @@ class PubMedConnector:
         """_summary_
 
         Args:
-            corpus_dictionary (_type_): _description_
-            record (_type_): _description_
+            corpus_dictionary (dict): dictionary that should contain final parameters
+            record (dict): fetch api parameter  dictionary
         """
         corpus_dictionary["ID"].append(record["PMID"])
         corpus_dictionary["abstract"].append(record["AB"])
@@ -126,10 +130,10 @@ class PubMedConnector:
         """_summary_
 
         Args:
-            records (_type_): _description_
+            records (list(pd.DataFrame)): A list of the pd.DataFrame from each single thread
 
         Returns:
-            _type_: _description_
+            pd.DatAFrame: Concatenation of all threads resulted pd.DataFrame holding the final PubMed data
         """
         final_records = pd.DataFrame()
         for i in records:
