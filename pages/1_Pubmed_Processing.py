@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import re 
 import os
+import openai
 from gensim.parsing.preprocessing import preprocess_string,strip_tags, strip_punctuation, remove_stopwords
 from gensim.models import Phrases
 from gensim.models.doc2vec import TaggedDocument
@@ -18,7 +19,7 @@ import matplotlib
 import seaborn as sns
 from bertopic import BERTopic
 from connector.PubMedConnector import PubMedConnector
-
+from connector.DataBaseConnector import DatabaseConnector
 
 @st.cache
 def load_data():
@@ -26,8 +27,17 @@ def load_data():
     current_path = os.getcwd()
     return pd.read_csv(current_path + "/data/impact_factor.txt", delimiter = "\t")
 
+def load_database():
+    database = DatabaseConnector("pubmed.db")
+    database.open_database()
+    return database
+
+@st.cache
+def openai_init():
+    openai.api_key = os.getenv('OPENAI_KEY')
+    
 # make a list of stopwords
-def processing_data(impact_factor):
+def processing_data():
     """_summary_:  Get the impact factor list 
 
     Args:
@@ -36,7 +46,7 @@ def processing_data(impact_factor):
     # layout of the streamlit page that is necessary for the training
     st.sidebar.subheader("Choose your search term")
     if url := st.sidebar.text_input('Enter your search query here:'):
-        
+        #database.write_mapping_table(url)
         stopword_list = ["among","although","especially","kg","km","mainly","ml","mm",
                         "disease","significantly","obtained","mutation","significant",
                         "quite","result","results","estimated","interesting","conducted",
@@ -77,19 +87,19 @@ def process_abstract_data(result, stopword_list):
     """
     
     result["date"] = [int(i[:4]) for i in result["Publication_date"].tolist()]
-    tab1, tab2, tab3 = st.tabs(["Overview","Abstract Umap","Content Analysis"])
+    tab1, tab2, tab3, tab4 = st.tabs(["Overview","Abstract Umap","Content Analysis", "Summarizer"])
 
     # make columns for the tabs
 
     tab1_col1, tab1_col2 = tab1.columns(2)
 
         #tab1 is the overview tab
+    
     count_occurences_per_year(result, tab1_col1)
     count_occurences_per_journal(result, tab1_col2)
     top_10_first_authors(result, tab1_col1)
     top_10_last_authors(result, tab1_col2)
-            
-
+    
     #preprocessing of the abstracts that are searched for, remove punctuations, stopwords
     result["processed_abstracts"] = preprocessing_list(result["abstract"], stopword_list)
     bigram = Phrases(result["processed_abstracts"].tolist(),min_count = 5, threshold = 100)
@@ -98,15 +108,17 @@ def process_abstract_data(result, stopword_list):
         model = running_model(document)
         st.success("Model done")
 
+    # check if the model was successfully generated
     if model:
         df_umap = umap_visualization(model)
         df_umap["Title"] = result["Title"].tolist()
         df_umap["Journal"] = result["Journal"].tolist()
+        df_umap["abstract"] = result["abstract"].tolist()
         umap_figure = draw_umap(df_umap)
         tab2.plotly_chart(umap_figure, use_container_width = True)
+        summarize_ai_text(df_umap, tab4)
 
     result["labels"] = df_umap["labels"]
-
     return result, tab3
             
 def preprocessing_list(liste,stopword_list):
@@ -181,15 +193,15 @@ def draw_umap(umap_df):
     returns:
     umap_figure: figure of the umap visualization
     """
-    fig3 = px.scatter(umap_df, 
-                      x="UMAP-1", 
-                      y="UMAP-2", 
-                      color="labels", 
-                      hover_data=["Title", "Journal"],
-                      template="plotly_white", 
-                      title = "UMAP visualization of queried term")
-
-    return fig3
+    return px.scatter(
+        umap_df,
+        x="UMAP-1",
+        y="UMAP-2",
+        color="labels",
+        hover_data=["Title", "Journal"],
+        template="plotly_white",
+        title="UMAP visualization of queried term",
+    )
 
 def count_occurences_per_year(abstract_df,tab):
     """ retrieves the number of occurences per year
@@ -198,20 +210,24 @@ def count_occurences_per_year(abstract_df,tab):
     tab: streamlit tab column
     """
     grouped_occurences = abstract_df.groupby("date")["date"].count()
-    year_plot = px.bar(grouped_occurences, x=grouped_occurences.index, y=grouped_occurences.values)
+    year_plot = px.bar(grouped_occurences,
+                       x=grouped_occurences.index,
+                       y=grouped_occurences.values,
+                       title = "# Publication per Year")
     tab.plotly_chart(year_plot, use_container_width = True)
 
 def count_occurences_per_journal(abstract_df,tab):
     """_summary_
 
     Args:
-        abstract_df (_type_): _description_
-        tab (_type_): _description_
+        abstract_df (pd.DataFrame): the dataframe hodling all the abstracts
+        tab (st.col): streamlit tab column
     """
     grouped_occurences = abstract_df.groupby("Journal")["Journal"].count().sort_values(ascending = False).iloc[:10]
     journal_plot = px.bar(grouped_occurences, 
                           x=grouped_occurences.index, 
                           y=grouped_occurences.values,
+                          title = "# Publication per Journal"
                           )
     tab.plotly_chart(journal_plot, use_container_width = True)
 
@@ -219,8 +235,8 @@ def top_10_first_authors(abstract_df,tab):
     """_summary_
 
     Args:
-        abstract_df (_type_): _description_
-        tab (_type_): _description_
+        abstract_df (pd.DataFrame): dataframe holding all the abstract
+        tab (st.col): streamlit tab column
     """
     grouped_occurences = abstract_df.groupby("first")["first"].count().sort_values(ascending = False).iloc[:10]
     first_plot = px.bar(grouped_occurences,
@@ -233,8 +249,8 @@ def top_10_last_authors(abstract_df,tab):
     """_summary_
 
     Args:
-        abstract_df (_type_): _description_
-        tab (_type_): _description_
+        abstract_df (pd.DataFrame): _description_
+        tab (st.col): _description_
     """
     grouped_occurences = abstract_df.groupby("last")["last"].count().sort_values(ascending = False).iloc[:10]
     last_plot = px.bar(grouped_occurences, 
@@ -259,8 +275,8 @@ def bert_topic_modelling(df_end, tab):
     topics_per_class = topic_model.topics_per_class(df_end["string_abstract"].tolist(), classes=targets)
     
     col1, col2 = tab.columns(2)
-    col1.plotly_chart(topic_model.visualize_topics())
-    col2.plotly_chart(topic_model.visualize_topics_per_class(topics_per_class))
+    col1.plotly_chart(topic_model.visualize_topics(), use_container_width = True)
+    col2.plotly_chart(topic_model.visualize_topics_per_class(topics_per_class), use_container_width = True)
    
     
 def write_table_model(model_list):
@@ -269,10 +285,32 @@ def write_table_model(model_list):
     Args:
         model_list (_type_): _description_
     """
-    
     pass
+
+def summarize_ai_text(results, tab):
+    """_summary_
+
+    Args:
+        results (pd.DataFrame): _description_
+        tab (st.tab): _description_
+    """
+    summaries_dict = {}
+    for i in results["labels"].unique():
+        df_text = results[results["labels"]==i]
+        print(df_text.head())
+        text = ".".join(df_text["abstract"].tolist()) # should be the label text
+        augmented_prompt = f"Summarize this text: {text}"
+        summary = openai.Completion.create(
+                            model="ada",
+                            prompt=augmented_prompt,
+                            temperature=.5,
+                            max_tokens=1000,
+                                )
+        summaries_dict[i].append(summary)
         
     
 if __name__ == "__main__":
     impact_factor = load_data()
-    processing_data(impact_factor)
+    openai_init()
+    #database = load_database()
+    processing_data()
