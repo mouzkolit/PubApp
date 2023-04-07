@@ -2,19 +2,20 @@
 
 ## Streamlit App fetching PubMed Abstracts from a queried Search String
 
-* Multiprocessing abstract fetch together with Title/Date/Author/Last-Author/PMID
-* Preprocessing of the Abstract, removing stopwords, punctuation, lower-case and more
-* Training of a Doc2Vec model for Document Embeddings
+* Multiprocessing abstract fetch together with Title/Date/Author/Last-Author/PMID from PubMed.org
+* Preprocessing of the Abstract, removing stopwords, punctuation, lower-case and perform tokeniztion
+* Training of a Doc2Vec model for Document Embeddings as well as training a Berttopic Model
 * UMAP Latent-Space Visualization as well as DB-scan/Louvain clustering to retrieve putative Topics
 * Topic Modelling about the Topics per Cluster using Bert-TOPIC
-
+* Saves the searched data into a database that is querable for the search key (DuckDB)
+* At the moment it should be used locally since DuckDB has no concurrent writing possibilites
 
 ## What is missing
  
-* currently a database will be setted up that will held already queried documents (Amazon DynamoDB)
-* Author Network Integration Citations Impact of Citations
-* Summary of Authors Work
-* Summary of search query Term
+* Author Network Integration Citations Impact of Citations (Currently in development)
+* Summary of Authors Work (This will be provided by means of searching an author directly)
+* Summary of search query Term (This can be used whenever LLMS are more affordable)
+* DuckDB DataBase that can be used for a local copy of searched data
 
 # EDA and UMAP
 
