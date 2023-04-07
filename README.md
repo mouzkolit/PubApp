@@ -16,5 +16,13 @@
 * Summary of Authors Work
 * Summary of search query Term
 
+# EDA and UMAP
+
+Exploratory Data Analysis will be performed and topics extracted from the Abstracts as well as that PubMed Abstracts will be clustered
+
+<img src="/Images/eda_example.png" title="hover text">
+<br>
+<img src="/Images/umap_example.png" title="hover text">
+
 
 
