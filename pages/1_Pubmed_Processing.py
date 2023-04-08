@@ -34,11 +34,10 @@ def processing_data():
         impact_factor (pd.DataFrame): DataFrame of impact factors
     """
     # layout of the streamlit page that is necessary for the training
-
     st.sidebar.subheader("Choose your search term")
+    st.info("Please enter a your PubMed search-term!")
     if url := st.sidebar.text_input('Enter your search query here:'):
-        database = DatabaseConnector(False)
-        #database.write_mapping_table(url)
+        database = DatabaseConnector(False) # False means that the database is not created
         stopword_list = ["among","although","especially","kg","km","mainly","ml","mm",
                         "disease","significantly","obtained","mutation","significant",
                         "quite","result","results","estimated","interesting","conducted",
@@ -49,14 +48,16 @@ def processing_data():
                         "exhibits","induce", "Background","Objective","Methods","cells", "kinase","activation","protein"]
         try:
             abstract_data, tab3, df_umap = retrieve_abstract_data(url, stopword_list)
-            database.write_database(abstract_data, df_umap, url, url)
+            if url not in database.con.execute("SELECT key FROM PubMedKeys").fetchall():
+                st.write("This key is already in the database")
+                database.write_database(abstract_data, df_umap, url, url)
             bert_topic_modelling(abstract_data,tab3)
+
         except Exception as e:
             print(e)
         finally:
             # This is important in case of a failure and therefore database is not close which kind of disrupts the app
             database.con.close()
-
 
 def retrieve_abstract_data(url, stopword_list):
     """_summary: Retrieves available abstract data from Pubmed
@@ -74,16 +75,16 @@ def retrieve_abstract_data(url, stopword_list):
     result = pubmed_fetch.query_data()
     return process_abstract_data(result,stopword_list)
 
-
-def process_abstract_data(result, stopword_list):
-    """_summary_:
+def process_abstract_data(result: pd.DataFrame, stopword_list: list):
+    """_summary_: Process the abstract data and creaet exploratory analysis
+    from the top 10 authors and journals
 
     Args:
-        result (_type_): _description_
+        result (pd.DataFrame): This includes the abstracts, title, authors, journal, publication date
         stopword_list (_type_): _description_
 
     Returns:
-        _type_: _description_
+        tuple: result table, the current tab and the umap table
     """
 
     result["date"] = [int(i[:4]) for i in result["Publication_date"].tolist()]
@@ -92,8 +93,6 @@ def process_abstract_data(result, stopword_list):
     # make columns for the tabs
 
     tab1_col1, tab1_col2 = tab1.columns(2)
-
-        #tab1 is the overview tab
 
     count_occurences_per_year(result, tab1_col1)
     count_occurences_per_journal(result, tab1_col2)
@@ -110,16 +109,32 @@ def process_abstract_data(result, stopword_list):
 
     # check if the model was successfully generated
     if model:
-        df_umap = umap_visualization(model)
-        df_umap["Title"] = result["Title"].tolist()
-        df_umap["Journal"] = result["Journal"].tolist()
-        df_umap["abstract"] = result["abstract"].tolist()
-        umap_figure = draw_umap(df_umap)
-        tab2.plotly_chart(umap_figure, use_container_width = True)
-        #summarize_bert_text(df_umap, tab4)
+        df_umap = create_umap_visualization_from_model(model, result, tab2)
+            #summarize_bert_text(df_umap, tab4)
 
     result["labels"] = df_umap["labels"]
     return result, tab3, df_umap
+
+
+def create_umap_visualization_from_model(model, result: pd.DataFrame, tab2):
+    """_summary_: Create the umap visualization from the model
+
+    Args:
+        model (Doc2VEc): Doc2Vec Model
+        result (pd.DataFrame): _description_
+        tab2 (st.Tabs): Tab to display the umap visualization
+
+    Returns:
+        pd.DataFrame: _description_
+    """
+    result_umap = umap_visualization(model)
+    result_umap["Title"] = result["Title"].tolist()
+    result_umap["Journal"] = result["Journal"].tolist()
+    result_umap["abstract"] = result["abstract"].tolist()
+    tab2.slider("Select the cluster", 0,1)
+    umap_figure = draw_umap(result_umap)
+    tab2.plotly_chart(umap_figure, use_container_width = True)
+    return result_umap
 
 def preprocessing_list(liste,stopword_list):
     """ preprocess the abstract list, remove stopwords, punctuations, numbers
@@ -138,7 +153,7 @@ def preprocessing_list(liste,stopword_list):
         processed_abstracts.append(no_integers)
     return processed_abstracts
 
-@st.cache
+@st.cache_resource
 def running_model(document):
     """ run the model that detect similarities using the Doc2Vec model
     here we can implement other models such as Bert and more too!
@@ -178,11 +193,32 @@ def umap_visualization(model):
 
     df_dx = pd.DataFrame(prediction_labels, columns=['UMAP-1', 'UMAP-2'])
     # make a neighborhood graph
-    neighborhood_graph = kneighbors_graph(prediction_labels, 10, mode='connectivity', include_self=True)
+    if df_dx.shape[0] < 100:
+        k = 10
+        l = 0.1
+    elif df_dx.shape[0] < 1000:
+        k = 20
+        l = 0.01
+    elif df_dx.shape[0] > 1000:
+        k = 30
+        l = 0.001
+    else:
+        st.warning("The number of points is to low")
+        return None
+
+    neighborhood_graph = kneighbors_graph(prediction_labels,
+                                          k,
+                                          mode='connectivity',
+                                          include_self=True,
+                                          n_jobs = -1)
+
     neighborhood_graph = neighborhood_graph.toarray()
     g = igraph.Graph.Adjacency((neighborhood_graph > 0).tolist())
-    partition = la.find_partition(g,la.ModularityVertexPartition).membership
-    df_dx["labels"] = partition
+    partition = la.CPMVertexPartition(g, resolution_parameter = l)
+    optimiser = la.Optimiser()
+    diff = optimiser.optimise_partition(partition)
+    df_dx["labels"] = partition.membership
+    print(df_dx)
     return df_dx
 
 def draw_umap(umap_df):
@@ -277,14 +313,6 @@ def bert_topic_modelling(df_end, tab):
     #col1.plotly_chart(topic_model.visualize_topics(), use_container_width = True)
     tab.plotly_chart(topic_model.visualize_topics_per_class(topics_per_class), use_container_width = True)
 
-
-def write_table_model(model_list):
-    """
-    Args:
-        model_list (_type_): _description_
-    """
-
-    pass
 
 def summarize_ai_text(results, tab):
     """_summary_: This can summarize the text using the OPEN AI gpt model
