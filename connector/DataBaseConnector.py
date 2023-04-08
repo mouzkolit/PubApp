@@ -21,7 +21,7 @@ class DatabaseConnector:
         else:
             self.con = duckdb.connect(database=self.database_name, read_only=self.read_only)
 
-    def write_database(self, table: pd.DataFrame, table_name: str, search_key: str):
+    def write_database(self, table: pd.DataFrame, umap_table: pd.DataFrame, table_name: str, search_key: str):
 
         """This should write the database with the key (pubmed search key)
         and the acquired data
@@ -32,8 +32,10 @@ class DatabaseConnector:
         try:
             table_df = table #.to_sql(table_name, self.con, if_exists="replace")
             table_name = "_".join(table_name.split(" ")) # create a table name without spaces
+            um_table = f"umap_{table_name}"
             self.con.execute(f"CREATE TABLE {table_name} AS SELECT * FROM table_df")
-            self.con.execute("INSERT INTO PubMedKeys (key, table_name) VALUES (?, ?)", (search_key, table_name))
+            self.con.execute(f"CREATE TABLE {um_table} AS SELECT * FROM umap_table")
+            self.con.execute("INSERT INTO PubMedKeys (key, table_name, umap_table) VALUES (?, ?, ?)", (search_key, table_name, um_table))
         except Exception as e:
             print(e)
         finally:
@@ -55,5 +57,6 @@ class DatabaseConnector:
         self.con.execute(create_unique_offline_analysis_sequence)
         self.con.execute("""CREATE TABLE PubMedKeys(ID_Pub integer PRIMARY KEY DEFAULT(nextval ('ID')),
                                                     key VARCHAR,
-                                                    table_name VARCHAR)""")
+                                                    table_name VARCHAR,
+                                                    umap_table VARCHAR)""")
 

@@ -1,6 +1,6 @@
 from Bio import Entrez
 from Bio import Medline
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import ThreadPoolExecutor
 import time
 from itertools import islice
 from urllib.error import HTTPError
@@ -8,6 +8,7 @@ import pandas as pd
 import streamlit as st
 
 
+@st.cache_resource
 class PubMedConnector:
     def __init__(self, url, email = "trial@outlook.com"):
         # TODO: This should be a parameter
@@ -21,7 +22,7 @@ class PubMedConnector:
         """
         try:
             return self.query_pubmed()
-        except HTTPError:
+        except HTTPError as e:
             count += 1
             time.sleep(10)
             if count < 5:
