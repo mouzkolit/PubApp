@@ -20,7 +20,7 @@ from connector.DataBaseConnector import DatabaseConnector
 from summarizer import Summarizer
 
 
-@st.cache
+@st.cache_data
 def load_data():
     """ Function to load data, later connect to AWS"""
     current_path = os.getcwd()
@@ -48,8 +48,8 @@ def processing_data():
                         "synonymous","skipping","father","mother","pedigree","novo","rescues","rescued","restored",
                         "exhibits","induce", "Background","Objective","Methods","cells", "kinase","activation","protein"]
         try:
-            abstract_data, tab3 = retrieve_abstract_data(url, stopword_list)
-            database.write_database(abstract_data, url, url)
+            abstract_data, tab3, df_umap = retrieve_abstract_data(url, stopword_list)
+            database.write_database(abstract_data, df_umap, url, url)
             bert_topic_modelling(abstract_data,tab3)
         except Exception as e:
             print(e)
@@ -119,7 +119,7 @@ def process_abstract_data(result, stopword_list):
         #summarize_bert_text(df_umap, tab4)
 
     result["labels"] = df_umap["labels"]
-    return result, tab3
+    return result, tab3, df_umap
 
 def preprocessing_list(liste,stopword_list):
     """ preprocess the abstract list, remove stopwords, punctuations, numbers
